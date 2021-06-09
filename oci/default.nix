@@ -6,13 +6,11 @@
 , writeReferencesToFile
 , stdenv
 , python3
+, jq
 }:
 
 let
   inherit (builtins) head elem length toString;
-
-  readMetadata = item:
-    builtins.fromJSON (builtins.readFile "${item}/metadata.json");
 
   makeAccounts = spec:
     let
@@ -341,7 +339,7 @@ rec {
   */
   makeImageManifest = {
     name,
-    tag ? null,
+    tag ? "",
     architecture,
     os,
     config ? null,
@@ -374,14 +372,6 @@ rec {
 
       path = lib.makeBinPath (builtins.concatMap (layer: layer.path or []) resolvedLayers);
 
-      # filter out empty layers, this can happen if a layer has no entries and
-      # all its dependencies are excluded
-      nonEmptyLayers = builtins.concatMap (layer:
-        lib.optionals (builtins.pathExists "${layer}/layer.tar") [ layer ]
-      ) resolvedLayers;
-
-      nonEmptyLayersMetadata = map readMetadata nonEmptyLayers;
-
       # merge PATH in env
       configEnv = config.Env or [];
       newEnv =
@@ -395,63 +385,27 @@ rec {
         else
           configEnv ++ [ "PATH=${path}" ];
 
-      configJson = builtins.toJSON {
-        inherit architecture os;
-        created = "1970-01-01T00:00:00Z";
-        rootfs = {
-          type = "layers";
-          diff_ids = map (metadata: metadata.digest) nonEmptyLayersMetadata;
-        };
-        config = (spec.config or {}) // {
-          Env = newEnv;
-        };
-      };
-
-      configHash = builtins.hashString "sha256" configJson;
-
-      manifestJson = builtins.toJSON {
-        schemaVersion = 2;
-        config = {
-          mediaType = "application/vnd.oci.image.config.v1+json";
-          size = builtins.stringLength configJson;
-          digest = "sha256:" + configHash;
-        };
-        layers = nonEmptyLayersMetadata;
-      };
-
-      manifestHash = builtins.hashString "sha256" manifestJson;
-
-      metadataJson = builtins.toJSON ({
-        mediaType = "application/vnd.oci.image.manifest.v1+json";
-        size = builtins.stringLength manifestJson;
-        digest = "sha256:" + manifestHash;
-        platform = {
-          inherit architecture os;
-        };
-      } // lib.optionalAttrs (tag != null) {
-        annotations."org.opencontainers.image.ref.name" = tag;
-      });
+      configJson = (writeText "${name}-config" (builtins.toJSON ((spec.config or {}) // {
+        Env = newEnv;
+      })));
     in
     runCommand name {
-      inherit configJson manifestJson metadataJson;
-      passAsFile = [ "configJson" "manifestJson" "metadataJson "];
-
+      nativeBuildInputs = [ python3 ];
+      layers = resolvedLayers;
       passthru = {
-        inherit spec resolvedLayers;
-        layers = nonEmptyLayers;
+        inherit spec;
+        layers = resolvedLayers;
       };
     } ''
       mkdir -p $out
-      cp $configJsonPath $out/config.json
-      cp $manifestJsonPath $out/manifest.json
-      cp $metadataJsonPath $out/metadata.json
 
-      mkdir -p $out/blobs/sha256
-      ln -s $out/config.json $out/blobs/sha256/${configHash}
-      ln -s $out/manifest.json $out/blobs/sha256/${manifestHash}
-      ${lib.concatMapStringsSep "\n" (layer: ''
-        cp -r ${layer}/blobs $out
-      '') nonEmptyLayers}
+      python ${./build-image-manifest.py} \
+        --out $out \
+        --config ${configJson} \
+        --tag "${tag}" \
+        --architecture "${architecture}" \
+        --os "${os}" \
+        $layers
     '';
 
   /* Creates an OCI image directory containing various manifests
@@ -465,22 +419,18 @@ rec {
        skopeo copy oci:result:0.1.0 docker-daemon:myimage:0.1.0
   */
   makeImageDirectory = { name, manifests, passthru ? {} }:
-    let
-      indexJson = builtins.toJSON {
-        schemaVersion = 2;
-        manifests = map readMetadata manifests;
-      };
-    in
     runCommand name {
-      inherit indexJson;
-      passAsFile = [ "indexJson" ];
+      inherit manifests;
+      nativeBuildInputs = [ jq ];
       passthru = passthru // {
         inherit manifests;
       };
     } ''
       mkdir -p $out
       echo '{"imageLayoutVersion":"1.0.0"}' > $out/oci-layout
-      cp $indexJsonPath $out/index.json
+      for manifest in $manifests; do
+        cat "$manifest/metadata.json"
+      done | jq -cs '{ schemaVersion: 2, manifests: . }' > $out/index.json
 
       ${lib.concatMapStringsSep "\n" (manifest: ''
         cp -r ${manifest}/blobs $out
