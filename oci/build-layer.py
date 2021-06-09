@@ -7,6 +7,7 @@ import io
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tarfile
@@ -291,6 +292,7 @@ if __name__ == '__main__':
 
     normalized_spec = list(
         map(lambda entry: (parse_path(entry[0]), entry[1]), spec.items()))
+    normalized_spec.sort(key=lambda x: x[0])
 
     additional_paths = set()
     if opts.includes != None:
@@ -303,17 +305,33 @@ if __name__ == '__main__':
             for line in f:
                 additional_paths.discard(line.rstrip("\n"))
 
+    # we keep this separate from normalized_spec to ensure precedence
+    additional_spec = []
     for path in additional_paths:
-        info = dict(type='directory', uid=0, gid=0, sources=[dict(path=path)])
-        normalized_spec.append((parse_path(path), info))
+        stmd = os.stat(path, follow_symlinks=False).st_mode
+        info = dict(uid=0, gid=0)
+        if stat.S_ISDIR(stmd):
+            info['type'] = 'directory'
+            info['sources'] = [dict(path=path)]
+        elif stat.S_ISLNK(stmd):
+            info['type'] = 'link'
+            info['target'] = os.readlink(path)
+        elif stat.S_ISREG(stmd):
+            info['type'] = 'file'
+            info['source'] = path
+        else:
+            raise Exception("Unsupported file: {}".format(path))
 
-    if len(normalized_spec) > 0:
-        normalized_spec.sort(key=lambda x: x[0])
+        additional_spec.append((parse_path(path), info))
+    additional_spec.sort(key=lambda x: x[0])
 
+    full_spec = normalized_spec + additional_spec
+
+    if len(full_spec) > 0:
         umask = parse_mode(opts.umask).apply(0)
         layer = Layer(opts.out, umask, opts.mtime)
 
-        for path, info in normalized_spec:
+        for path, info in full_spec:
             print("Adding to layer '{}'".format(path))
             layer.add(path, info)
 
