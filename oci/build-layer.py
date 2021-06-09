@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from argparse import ArgumentParser
 from datetime import datetime, timezone
 from pathlib import PurePosixPath, PosixPath
 import io
@@ -147,10 +148,6 @@ class CopyFromSources:
         self.layer = layer
         self.path = path
         self.info = info
-        self.entries = set()
-
-    def add_external_entry(self, path):
-        self.entries.add(path)
 
     def do_copy(self):
         parent_uid = assert_number(self.info.get('uid', 0))
@@ -182,23 +179,14 @@ class CopyFromSources:
 
         if tarinfo.isreg():
             with open(source, 'rb') as f:
-                self.add_file(tarinfo, f)
+                self.layer.add_entry(tarinfo, f)
         elif tarinfo.isdir():
-            self.add_file(tarinfo, None)
+            self.layer.add_entry(tarinfo, None)
             for f in sorted(os.listdir(source)):
                 self.add(os.path.join(source, f), os.path.join(arcname, f),
                          modifier)
         else:
-            self.add_file(tarinfo, None)
-
-    def add_file(self, tarinfo, fileobj):
-        if tarinfo.name in self.entries:
-            if tarinfo.name != self.path:
-                print("Warning: {} already exists, skipping".format(
-                    tarinfo.name))
-            return
-        self.layer.tar.addfile(tarinfo, fileobj)
-        self.entries.add(tarinfo.name)
+            self.layer.add_entry(tarinfo, None)
 
 
 class Layer:
@@ -207,27 +195,29 @@ class Layer:
         self.dir_mode = 0o777 & ~umask
         self.fixed_time = fixed_time
 
-        self.tar = tarfile.open(out_path, 'w')
-        self.directories = set()
-        self.directory_copiers = dict()
+        self.entries = set()
+        if os.path.exists(out_path):
+            if tarfile.is_tarfile(out_path):
+                with tarfile.open(out_path, 'r') as t:
+                    self.entries = set(map(parse_path, t.getnames()))
+            else:
+                print("{} is not a tar file".format(out_path))
+                sys.exit(1)
 
-    def add_entry(self, path, info):
+        self.tar = tarfile.open(out_path, 'a')
+        self.directory_copiers = list()
+
+    def add(self, path, info):
         parent = os.path.dirname(path)
         # a parent of '' means it's the "root"
-        if parent != '' and parent not in self.directories:
+        if parent != '' and parent not in self.entries:
             # recursively add parent directories as needed
-            self.add_entry(parent, dict(type='directory'))
+            self.add(parent, dict(type='directory'))
 
         tarinfo = tarfile.TarInfo(path)
         tarinfo.mtime = self.fixed_time
         tarinfo.uid = assert_number(info.get('uid', 0))
         tarinfo.gid = assert_number(info.get('gid', 0))
-
-        # if we're under a directory that will be copied later, add ourselves
-        # to the blocklist to avoid duplicates
-        for key in self.directory_copiers:
-            if path.startswith(key):
-                self.directory_copiers[key].add_external_entry(path)
 
         if info['type'] == 'file':
             if 'source' in info:
@@ -236,64 +226,95 @@ class Layer:
                 tarinfo.mode = mode.apply(stat.st_mode)
                 tarinfo.size = stat.st_size
                 with open(info['source'], 'rb') as f:
-                    self.tar.addfile(tarinfo, f)
+                    self.add_entry(tarinfo, f)
             else:
                 text = bytes(info['text'], 'utf-8')
                 tarinfo.mode = parse_mode(info.get('mode')).apply(
                     self.file_mode)
                 tarinfo.size = len(text)
                 with io.BytesIO(text) as f:
-                    self.tar.addfile(tarinfo, f)
+                    self.add_entry(tarinfo, f)
 
         elif info['type'] == 'link':
             tarinfo.type = tarfile.SYMTYPE
             tarinfo.mode = 0o777
             tarinfo.linkname = info['target']
-            self.tar.addfile(tarinfo)
+            self.add_entry(tarinfo)
 
         elif info['type'] == 'directory':
             tarinfo.type = tarfile.DIRTYPE
             tarinfo.mode = parse_mode(info.get('mode')).apply(self.dir_mode)
-            self.tar.addfile(tarinfo)
+            self.add_entry(tarinfo)
 
             if 'sources' in info:
                 copier = CopyFromSources(self, path, info)
-                copier.add_external_entry(path)
 
                 # we defer the actual copying so that later entries can be
                 # added to the layer, and these will be ignored by the bulk
                 # copy
-                self.directory_copiers[path] = copier
-
-            self.directories.add(path)
+                self.directory_copiers.append(copier)
 
         else:
             raise Exception('Unknown type: {}'.format(info['type']))
 
+    def add_entry(self, tarinfo, fileobj=None):
+        if tarinfo.name in self.entries:
+            if not tarinfo.isdir():
+                print("Warning: {} already exists, skipping".format(
+                    tarinfo.name))
+            return
+        self.tar.addfile(tarinfo, fileobj)
+        self.entries.add(tarinfo.name)
+
     def close(self):
         # actually do the directory copy so that all non-copy entries have been
         # added to the copier's blocklist
-        for copier in self.directory_copiers.values():
+        for copier in self.directory_copiers:
             copier.do_copy()
         self.tar.close()
 
 
 if __name__ == '__main__':
-    out_dir = sys.argv[1]
-    out_path = os.path.join(out_dir, 'layer.tar')
-    umask = parse_mode(sys.argv[2]).apply(0)
-    fixed_time = int(sys.argv[3])
+    parser = ArgumentParser(description='Add nix store paths to layer')
+    parser.add_argument('--mtime', type=int, default=0)
+    parser.add_argument('--umask', default='0022')
+    parser.add_argument('--entries')
+    parser.add_argument('--includes')
+    parser.add_argument('--excludes')
+    parser.add_argument('--out', required=True)
+    opts = parser.parse_args()
 
-    spec = json.loads(sys.stdin.read())
+    spec = dict()
+    if opts.entries != None:
+        with open(opts.entries) as f:
+            spec = json.loads(f.read())
 
-    if len(spec) > 0:
-        normalized_spec = list(
-            map(lambda entry: (parse_path(entry[0]), entry[1]), spec.items()))
+    normalized_spec = list(
+        map(lambda entry: (parse_path(entry[0]), entry[1]), spec.items()))
+
+    additional_paths = set()
+    if opts.includes != None:
+        with open(opts.includes) as f:
+            for line in f:
+                additional_paths.add(line.rstrip("\n"))
+
+    if opts.excludes != None:
+        with open(opts.excludes) as f:
+            for line in f:
+                additional_paths.discard(line.rstrip("\n"))
+
+    for path in additional_paths:
+        info = dict(type='directory', uid=0, gid=0, sources=[dict(path=path)])
+        normalized_spec.append((parse_path(path), info))
+
+    if len(normalized_spec) > 0:
         normalized_spec.sort(key=lambda x: x[0])
 
-        layer = Layer(out_path, umask, fixed_time)
+        umask = parse_mode(opts.umask).apply(0)
+        layer = Layer(opts.out, umask, opts.mtime)
 
         for path, info in normalized_spec:
-            layer.add_entry(path, info)
+            print("Adding to layer '{}'".format(path))
+            layer.add(path, info)
 
         layer.close()

@@ -22,7 +22,7 @@ in
   case3 = makeLayer {
     name = "test-layer";
     entries = {
-      "${builtins.unsafeDiscardStringContext pkgs.hello}/somepath" = {
+      "${builtins.unsafeDiscardStringContext pkgs.hello}" = {
         type = "directory";
         sources = [{
           path = pkgs.hello;

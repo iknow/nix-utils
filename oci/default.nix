@@ -184,36 +184,27 @@ rec {
       grep -v "${drv}" "${referencesFile}" > $out
     '';
 
-  /* Creates a layer from entries without its dependencies
-
-     This is mainly for internal use. See makeLayer for the structure of
-     entries.
-  */
-  makeBareLayerFromEntries = {
-    name,
-    entries,
-    umask
-  }: runCommand name {
-    nativeBuildInputs = [ python3 ];
-    entriesJson = builtins.toJSON entries;
-    passAsFile = [ "entriesJson" ];
-    passthru.excludeFromLayer = true;
-  } ''
-    mkdir -p $out
-    python ${./build-layer.py} $out ${umask} "$SOURCE_DATE_EPOCH" < $entriesJsonPath
-    python ${./hash-layer.py} $out
-  '';
-
-  /* Creates a layer from an optional base tar file and include/excludes
+  /* Creates a layer from an optional base tar file, entries and includes
 
      This is mainly for internal use. Prefer using makeLayer instead.
+
+     baseTar can be any tar file. See makeLayer for the description of entries,
+     umask, includes and excludes.
+
+     In terms of precedence, baseTar > entries > includes. Files / directories
+     from a "higher" level are never overwritten (in terms of both content and
+     file attributes).
+
+     Duplicate files will print a warning but directories will be skipped
+     silently.
   */
   makeLayer' = {
     name,
     baseTar ? null,
+    entries ? {},
+    umask ? "0222",
     includes ? [],
-    excludes ? [],
-    passthru ? {}
+    excludes ? []
   }:
     let
       includesFile = writeText "layer-includes" (builtins.concatStringsSep "\n" includes);
@@ -227,8 +218,12 @@ rec {
       directExcludes = directExcludes ++ [ includesFile ];
       inherit baseTar;
 
-      passthru = passthru // {
+      entriesJson = builtins.toJSON entries;
+      passAsFile = [ "entriesJson" ];
+
+      passthru = {
         inherit includes;
+        excludeFromLayer = true;
 
         # When building things layer by layer, we typically want to exclude all
         # previous layer's included dependencies. Specifying just
@@ -244,62 +239,18 @@ rec {
         echo "$exclude" >> excludePaths
       done
 
-      comm <(sort excludePaths) <(sort $layerIncludes) -1 -3 > pathsToCopy
-
       mkdir -p $out
-      touch tarPaths
       if [ -n "$baseTar" ] && [ -f "$baseTar" ]; then
         cp --no-preserve=mode "$baseTar" "$out/layer.tar"
-        tar tf "$baseTar" > tarPaths
       fi
 
-      tar_with_opts() {
-        tar rf $out/layer.tar \
-          --sort=name \
-          --mtime="@$SOURCE_DATE_EPOCH" \
-          --owner=0:0 \
-          --group=0:0 \
-          --directory=/ \
-          "$@"
-      }
-
-      entry_exists() {
-        # strip leading /, all these paths are nix store entries which are
-        # guaranteed to be absolute paths
-        normalized_path=''${1:1}
-
-        # the entries in the tar could possibly list the nix store as
-        # "nix/store", "/nix/store" or "./nix/store"
-        grep -qE "^(/|\./)?$normalized_path(/|$)" tarPaths
-      }
-
-      # initialize nix/store folders otherwise they're just "filled in" and
-      # have the default owner/uid and mtime
-      #
-      # this doesn't really affect reproducibility but just makes the image
-      # nicer
-      if [ -s pathsToCopy ]; then
-        if ! entry_exists "/nix"; then
-          tar_with_opts --no-recursion --mode="0555" "./nix"
-        fi
-        if ! entry_exists "/nix/store"; then
-          tar_with_opts --no-recursion --mode="0555" "./nix/store"
-        fi
-      fi
-
-      # copy nix store paths
-      while read item; do
-        if entry_exists "$item"; then
-          echo "== FAIL =="
-          echo "Base tar already contains path $item"
-          echo "Adding this path again can result in duplicate entries which makes this an invalid layer"
-          echo "If this is intentional, add these paths in a different layer instead"
-          echo
-          exit 1
-        fi
-        echo "Adding $item to layer nix store"
-        tar_with_opts ".$item"
-      done < pathsToCopy
+      python ${./build-layer.py} \
+        --out $out/layer.tar \
+        --umask ${umask} \
+        --mtime "$SOURCE_DATE_EPOCH" \
+        --entries $entriesJsonPath \
+        --includes $layerIncludes \
+        --excludes excludePaths
 
       # if we have an image after all this, hash it and build up the OCI blob
       # structure
@@ -354,7 +305,7 @@ rec {
       # this works because the tar isn't compressed and the references are
       # plainly visible
       bareLayer = lib.optionals (entries != null && entries != {}) [(
-        makeBareLayerFromEntries {
+        makeLayer' {
           name = "${name}-bare";
           inherit entries umask;
         }
@@ -365,14 +316,12 @@ rec {
     makeLayer' {
       inherit name excludes;
 
-      baseTar = map (layer: "${layer}/layer.tar") bareLayer;
+      baseTar = builtins.foldl' (_: x: x) null (map (layer: "${layer}/layer.tar") bareLayer);
 
       includes = fullIncludes;
-
-      passthru = {
-        inherit path;
-        bare = bareLayer;
-      };
+    } // {
+      inherit path;
+      bare = bareLayer;
     };
 
   /* Creates an OCI image manifest and config
