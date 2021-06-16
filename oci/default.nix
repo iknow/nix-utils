@@ -270,8 +270,9 @@ entries // rec {
     runCommand name {
       inherit manifests;
       nativeBuildInputs = [ jq ];
-      passthru = passthru // {
+      passthru = {
         inherit manifests;
+        imageFormat = "oci";
       };
     } ''
       mkdir -p $out
@@ -296,8 +297,7 @@ entries // rec {
     makeImageDirectory {
       name = "${spec.name}-container";
       manifests = [ manifest ];
-      passthru = {
-        inherit manifest;
-      };
+    } // {
+      inherit manifest;
     };
 }
