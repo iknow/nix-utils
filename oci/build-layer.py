@@ -28,7 +28,7 @@ number_regex = re.compile('[0-9]+')
 mode_regex = re.compile('[0-9]{4}')
 
 
-def parse_mode(mode):
+def parse_mode(mode, umask=0):
     if mode == None:
         return ModeSet(None)
     elif mode_regex.fullmatch(mode):
@@ -38,7 +38,7 @@ def parse_mode(mode):
             "Invalid mode: {}, please specify numeric modes as 4-digit octal".
             format(mode))
     else:
-        return ModeChange(mode)
+        return ModeChange(mode, umask)
 
 
 def assert_number(num):
@@ -63,8 +63,9 @@ class ModeSet:
 class ModeChange:
     change_regex = re.compile('(?P<op>[-+=])(?P<change>[ugo]|[rwxXst]*)')
 
-    def __init__(self, change):
+    def __init__(self, change, umask):
         self.change = change
+        self.umask = umask
         self.cache = dict()
 
     def apply(self, mode, is_dir=False):
@@ -93,7 +94,7 @@ class ModeChange:
                 index += 1
 
             if index == 0:
-                mask = 0o777
+                mask = ~self.umask
 
             while m := self.change_regex.match(mode_part, index):
                 index = m.end()
@@ -158,7 +159,7 @@ class CopyFromSources:
         for source in reversed(self.info['sources']):
             uid = assert_number(source.get('uid', parent_uid))
             gid = assert_number(source.get('gid', parent_gid))
-            mode = parse_mode(source.get('mode'))
+            mode = parse_mode(source.get('mode'), self.layer.umask)
 
             def modifier(tarinfo):
                 tarinfo.mtime = self.layer.fixed_time
@@ -192,6 +193,7 @@ class CopyFromSources:
 
 class Layer:
     def __init__(self, out_path, umask, fixed_time):
+        self.umask = umask
         self.file_mode = 0o666 & ~umask
         self.dir_mode = 0o777 & ~umask
         self.fixed_time = fixed_time
@@ -220,9 +222,10 @@ class Layer:
         tarinfo.uid = assert_number(info.get('uid', 0))
         tarinfo.gid = assert_number(info.get('gid', 0))
 
+        mode = parse_mode(info.get('mode'), self.umask)
+
         if info['type'] == 'file':
             if 'source' in info:
-                mode = parse_mode(info.get('mode'))
                 stat = os.stat(info['source'])
                 tarinfo.mode = mode.apply(stat.st_mode)
                 tarinfo.size = stat.st_size
@@ -230,8 +233,7 @@ class Layer:
                     self.add_entry(tarinfo, f)
             else:
                 text = bytes(info['text'], 'utf-8')
-                tarinfo.mode = parse_mode(info.get('mode')).apply(
-                    self.file_mode)
+                tarinfo.mode = mode.apply(self.file_mode)
                 tarinfo.size = len(text)
                 with io.BytesIO(text) as f:
                     self.add_entry(tarinfo, f)
@@ -244,7 +246,7 @@ class Layer:
 
         elif info['type'] == 'directory':
             tarinfo.type = tarfile.DIRTYPE
-            tarinfo.mode = parse_mode(info.get('mode')).apply(self.dir_mode)
+            tarinfo.mode = mode.apply(self.dir_mode)
             self.add_entry(tarinfo)
 
             if 'sources' in info:
