@@ -5,8 +5,6 @@ with pkgs.callPackage ./.. {};
 makeSimpleImage {
   name = "hello-image";
   tag = "0.1.0";
-  architecture = "amd64";
-  os = "linux";
   config = {
     User = "nobody";
     Entrypoint = [ "/entrypoint.sh" ];

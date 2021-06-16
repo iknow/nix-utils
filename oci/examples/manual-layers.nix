@@ -50,8 +50,6 @@ rec {
   image = makeSimpleImage {
     name = "manual-layers-image";
     tag = "0.1.0";
-    architecture = "amd64";
-    os = "linux";
     config = {
       Env = [ "PATH=/bin:$PATH" ];
       Cmd = [

@@ -6,10 +6,14 @@
 , writeReferencesToFile
 , python3
 , jq
+, buildPackages
 }:
 
 let
   entries = import ./entries.nix { inherit lib nix closureInfo runCommand; };
+
+  defaultOs = buildPackages.go.GOOS;
+  defaultArchitecture = buildPackages.go.GOARCH;
 in
 
 entries // rec {
@@ -184,8 +188,8 @@ entries // rec {
   makeImageManifest = {
     name,
     tag ? "",
-    architecture,
-    os,
+    architecture ? defaultArchitecture,
+    os ? defaultOs,
     config ? null,
     layers ? []
   }@spec:
