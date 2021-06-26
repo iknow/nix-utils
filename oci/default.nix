@@ -108,8 +108,8 @@ entries // rec {
   /* Creates an OCI layer
 
      entries is an attrset describing files to create / copy into the layer.
-     The attrset name will be the path of the entry, and the value is an
-     attrset describing it.
+     The attrset name will be the absolute path of the entry, and the value is
+     an attrset describing it.
 
      The entry attrset MUST have a type which is one of "file", "directory" or
      "link". "mode", "uid", "gid" may also be specified to change the file

@@ -49,7 +49,7 @@ makeSimpleImage {
       # don't to minimize build times. Proper layer separation also helps
       # ensure that layers stay cached in the registry / nodes.
       name = "entrypoint-layer";
-      entries."entrypoint.sh" = {
+      entries."/entrypoint.sh" = {
         type = "file";
         mode = "0755";
         # since we use bash here, this will implicitly include it in this layer

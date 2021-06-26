@@ -13,7 +13,7 @@ import sys
 import tarfile
 
 
-def parse_path(name):
+def parse_existing_path(name):
     path = PurePosixPath(name)
     if path.is_absolute():
         path = path.relative_to('/')
@@ -22,6 +22,19 @@ def parse_path(name):
         return '.'
     else:
         return f'./{path}'
+
+
+def parse_entry_path(name):
+    path = PurePosixPath(os.path.normpath(name))
+    if not path.is_absolute():
+        return (None, f'{name} must be absolute')
+    if path.as_posix() != name:
+        return (None, f'{name} should be normalized to {path}')
+
+    if path.as_posix() == '/':
+        return ('.', None)
+    else:
+        return (f'.{path}', None)
 
 
 number_regex = re.compile('[0-9]+')
@@ -202,7 +215,7 @@ class Layer:
         if os.path.exists(out_path):
             if tarfile.is_tarfile(out_path):
                 with tarfile.open(out_path, 'r') as t:
-                    self.entries = set(map(parse_path, t.getnames()))
+                    self.entries = set(map(parse_existing_path, t.getnames()))
             else:
                 print('{out_path} is not a tar file')
                 sys.exit(1)
@@ -291,9 +304,21 @@ if __name__ == '__main__':
         with open(opts.entries) as f:
             spec = json.loads(f.read())
 
-    normalized_spec = list(
-        map(lambda entry: (parse_path(entry[0]), entry[1]), spec.items()))
-    normalized_spec.sort(key=lambda x: x[0])
+    normalized_spec = []
+    spec_errors = []
+    for name, entry_spec in spec.items():
+        normalized_path, error = parse_entry_path(name)
+        if error != None:
+            spec_errors.push(error)
+            continue
+
+        normalized_spec.append((normalized_path, entry_spec))
+
+    if len(spec_errors) > 0:
+        print('ERROR: invalid entry paths:')
+        for error in spec_errors:
+            print(f'  {error}')
+        sys.exit(1)
 
     additional_paths = set()
     if opts.includes != None:
@@ -309,6 +334,11 @@ if __name__ == '__main__':
     # we keep this separate from normalized_spec to ensure precedence
     additional_spec = []
     for path in additional_paths:
+        normalized_path, error = parse_entry_path(path)
+        if error != None:
+            print(f'Include error: {error}')
+            sys.exit(1)
+
         stmd = os.stat(path, follow_symlinks=False).st_mode
         info = dict(uid=0, gid=0)
         if stat.S_ISDIR(stmd):
@@ -323,9 +353,10 @@ if __name__ == '__main__':
         else:
             raise Exception(f'Unsupported file: {path}')
 
-        additional_spec.append((parse_path(path), info))
-    additional_spec.sort(key=lambda x: x[0])
+        additional_spec.append((normalized_path, info))
 
+    normalized_spec.sort(key=lambda x: x[0])
+    additional_spec.sort(key=lambda x: x[0])
     full_spec = normalized_spec + additional_spec
 
     if len(full_spec) > 0:

@@ -46,11 +46,11 @@ let
     in
 
     {
-      "etc/passwd" = {
+      "/etc/passwd" = {
         type = "file";
         text = concatLines (lib.mapAttrsToList makePasswdLine users);
       };
-      "etc/group" = {
+      "/etc/group" = {
         type = "file";
         text = concatLines (lib.mapAttrsToList makeGroupLine groups);
       };
@@ -113,22 +113,22 @@ rec {
   (lib.optionalAttrs (accounts != null) (
     makeAccounts accounts
   )) // (lib.optionalAttrs hosts {
-    "etc/nsswitch.conf" = {
+    "/etc/nsswitch.conf" = {
       type = "file";
       text = "hosts: files dns";
     };
   }) // (lib.optionalAttrs tmp {
-    "tmp" = {
+    "/tmp" = {
       type = "directory";
       mode = "1777";
     };
   }) // (lib.optionalAttrs (usrBinEnv != null) {
-    "usr/bin/env" = {
+    "/usr/bin/env" = {
       type = "link";
       target = usrBinEnv;
     };
   }) // (lib.optionalAttrs (binSh != null) {
-    "bin/sh" = {
+    "/bin/sh" = {
       type = "link";
       target = binSh;
     };
@@ -182,7 +182,7 @@ rec {
       '';
     in
     {
-      "nix/var/nix" = {
+      "/nix/var/nix" = {
         type = "directory";
         sources = [{
           path = store;
