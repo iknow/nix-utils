@@ -120,7 +120,7 @@ rec {
   }) // (lib.optionalAttrs tmp {
     "tmp" = {
       type = "directory";
-      mode = "0777";
+      mode = "1777";
     };
   }) // (lib.optionalAttrs (usrBinEnv != null) {
     "usr/bin/env" = {
