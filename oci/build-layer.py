@@ -21,7 +21,7 @@ def parse_path(name):
     if path.as_posix() == '.':
         return '.'
     else:
-        return './{}'.format(path)
+        return f'./{path}'
 
 
 number_regex = re.compile('[0-9]+')
@@ -35,8 +35,8 @@ def parse_mode(mode, umask=0):
         return ModeSet(int(mode, 8))
     elif number_regex.fullmatch(mode):
         raise Exception(
-            "Invalid mode: {}, please specify numeric modes as 4-digit octal".
-            format(mode))
+            f'Invalid mode: {mode}, please specify numeric modes as 4-digit octal'
+        )
     else:
         return ModeChange(mode, umask)
 
@@ -45,7 +45,7 @@ def assert_number(num):
     if isinstance(num, int):
         return num
     else:
-        raise Exception("Got {}, but should be an int")
+        raise Exception(f"Got {num}, but should be an int")
 
 
 class ModeSet:
@@ -136,7 +136,7 @@ class ModeChange:
                     new_mode = (new_mode & ~mask) | (mask & change)
 
             if index != len(mode_part):
-                raise Exception('Invalid mode string: {}'.format(mode_part))
+                raise Exception(f'Invalid mode string: {mode_part}')
 
         self.cache[key] = new_mode
         return new_mode
@@ -204,7 +204,7 @@ class Layer:
                 with tarfile.open(out_path, 'r') as t:
                     self.entries = set(map(parse_path, t.getnames()))
             else:
-                print("{} is not a tar file".format(out_path))
+                print('{out_path} is not a tar file')
                 sys.exit(1)
 
         self.tar = tarfile.open(out_path, 'a')
@@ -258,13 +258,12 @@ class Layer:
                 self.directory_copiers.append(copier)
 
         else:
-            raise Exception('Unknown type: {}'.format(info['type']))
+            raise Exception(f"Unknown type for {path}: {info['type']}")
 
     def add_entry(self, tarinfo, fileobj=None):
         if tarinfo.name in self.entries:
             if not tarinfo.isdir():
-                print("Warning: {} already exists, skipping".format(
-                    tarinfo.name))
+                print(f"Warning: {tarinfo.name} already exists, skipping")
             return
         self.tar.addfile(tarinfo, fileobj)
         self.entries.add(tarinfo.name)
@@ -322,7 +321,7 @@ if __name__ == '__main__':
             info['type'] = 'file'
             info['source'] = path
         else:
-            raise Exception("Unsupported file: {}".format(path))
+            raise Exception(f'Unsupported file: {path}')
 
         additional_spec.append((parse_path(path), info))
     additional_spec.sort(key=lambda x: x[0])
@@ -334,7 +333,7 @@ if __name__ == '__main__':
         layer = Layer(opts.out, umask, opts.mtime)
 
         for path, info in full_spec:
-            print("Adding to layer '{}'".format(path))
+            print(f"Adding to layer '{path}'")
             layer.add(path, info)
 
         layer.close()
