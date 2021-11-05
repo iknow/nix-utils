@@ -115,7 +115,10 @@ rec {
   )) // (lib.optionalAttrs hosts {
     "/etc/nsswitch.conf" = {
       type = "file";
-      text = "hosts: files dns";
+      # the trailing newline is critical
+      text = ''
+        hosts: files dns
+      '';
     };
   }) // (lib.optionalAttrs tmp {
     "/tmp" = {
