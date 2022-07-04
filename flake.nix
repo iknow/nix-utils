@@ -9,5 +9,6 @@
         pkgs = import nixpkgs { system = "x86_64-linux"; };
       };
     };
+    utils.x86_64-linux.oci = (import nixpkgs { system = "x86_64-linux"; }).callPackage ./oci {};
   };
 }
