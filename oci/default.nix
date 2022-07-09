@@ -265,6 +265,23 @@ entries // rec {
         $layers
     '';
 
+  /* Creates an OCI image index containing various manifests */
+
+  makeImageIndex = { name, images, passthru ? {} }:
+    runCommand name {
+      inherit images;
+      nativeBuildInputs = [ python3 ];
+      passthru = {
+        inherit images;
+        imageFormat = "oci";
+      };
+    } ''
+      mkdir $out
+      python ${./build-image-index.py} \
+        --out $out \
+        $images
+    '';
+
   /* Creates an OCI image directory containing various manifests
 
      This is usable with skopeo using the path oci:<path to result>:tag
