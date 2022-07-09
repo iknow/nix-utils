@@ -291,7 +291,7 @@ entries // rec {
       done | jq -cs '{ schemaVersion: 2, manifests: . }' > $out/index.json
 
       ${lib.concatMapStringsSep "\n" (manifest: ''
-        cp -r ${manifest}/blobs $out
+        cp --no-preserve=mode -r ${manifest}/blobs $out
       '') manifests}
     '';
 
