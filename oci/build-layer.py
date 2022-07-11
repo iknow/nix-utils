@@ -40,7 +40,7 @@ mode_regex = re.compile('[0-9]{4}')
 
 
 def parse_mode(mode, umask=0):
-    if mode == None:
+    if mode is None:
         return ModeSet(None)
     elif mode_regex.fullmatch(mode):
         return ModeSet(int(mode, 8))
@@ -64,7 +64,7 @@ class ModeSet:
         self.mode = mode
 
     def apply(self, mode, is_dir=False):
-        if self.mode == None:
+        if self.mode is None:
             return mode
         else:
             return self.mode
@@ -82,7 +82,7 @@ class ModeChange:
     def apply(self, mode, is_dir=False):
         key = (mode, is_dir)
         cached = self.cache.get(key)
-        if cached != None:
+        if cached is not None:
             return cached
 
         mode_parts = self.change.split(',')
@@ -298,7 +298,7 @@ if __name__ == '__main__':
     opts = parser.parse_args()
 
     spec = dict()
-    if opts.entries != None:
+    if opts.entries is not None:
         with open(opts.entries) as f:
             spec = json.loads(f.read())
 
@@ -306,7 +306,7 @@ if __name__ == '__main__':
     spec_errors = []
     for name, entry_spec in spec.items():
         normalized_path, error = parse_entry_path(name)
-        if error != None:
+        if error is not None:
             spec_errors.push(error)
             continue
 
@@ -319,12 +319,12 @@ if __name__ == '__main__':
         sys.exit(1)
 
     additional_paths = set()
-    if opts.includes != None:
+    if opts.includes is not None:
         with open(opts.includes) as f:
             for line in f:
                 additional_paths.add(line.rstrip("\n"))
 
-    if opts.excludes != None:
+    if opts.excludes is not None:
         with open(opts.excludes) as f:
             for line in f:
                 additional_paths.discard(line.rstrip("\n"))
@@ -333,7 +333,7 @@ if __name__ == '__main__':
     additional_spec = []
     for path in additional_paths:
         normalized_path, error = parse_entry_path(path)
-        if error != None:
+        if error is not None:
             print(f'Include error: {error}')
             sys.exit(1)
 
