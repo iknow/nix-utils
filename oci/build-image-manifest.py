@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
 from argparse import ArgumentParser
+from collections import namedtuple
 import hashlib
 import json
 import os
 import shutil
+
+LayerInfo = namedtuple('LayerInfo', ['path', 'metadata', 'contenthash'])
 
 
 def hash(data):
@@ -24,10 +27,14 @@ if __name__ == '__main__':
     opts = parser.parse_args()
 
     non_empty_layers = []
-    for layer in opts.layers:
-        if os.path.exists(os.path.join(layer, 'layer.tar')):
-            with open(os.path.join(layer, 'metadata.json')) as f:
-                non_empty_layers.append((layer, json.load(f)))
+    for layer_path in opts.layers:
+        if os.path.exists(os.path.join(layer_path, 'metadata.json')):
+            with open(os.path.join(layer_path, 'metadata.json')) as f:
+                metadata = json.load(f)
+            with open(os.path.join(layer_path, 'contentsha256')) as f:
+                contenthash = f"sha256:{f.read().strip()}"
+            non_empty_layers.append(
+                LayerInfo(layer_path, metadata, contenthash))
 
     with open(opts.config) as f:
         container_config = json.load(f)
@@ -36,7 +43,7 @@ if __name__ == '__main__':
         'created': '1970-01-01T00:00:00Z',
         'rootfs': {
             'type': 'layers',
-            'diff_ids': list(map(lambda x: x[1]['digest'], non_empty_layers))
+            'diff_ids': list(map(lambda x: x.contenthash, non_empty_layers))
         },
         'config': container_config,
         'architecture': opts.architecture,
@@ -52,7 +59,7 @@ if __name__ == '__main__':
             'size': len(config),
             'digest': 'sha256:{}'.format(config_hash)
         },
-        'layers': list(map(lambda x: x[1], non_empty_layers))
+        'layers': list(map(lambda x: x.metadata, non_empty_layers))
     })
 
     manifest_hash = hash(manifest)
@@ -90,7 +97,7 @@ if __name__ == '__main__':
         json.dump(metadata_dict, f)
 
     for layer in non_empty_layers:
-        layer_blobs_path = os.path.join(layer[0], 'blobs', 'sha256')
+        layer_blobs_path = os.path.join(layer.path, 'blobs', 'sha256')
         for path in os.listdir(layer_blobs_path):
             shutil.copyfile(os.path.join(layer_blobs_path, path),
                             os.path.join(blobs_path, path),
