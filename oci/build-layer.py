@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 
 from argparse import ArgumentParser
-from datetime import datetime, timezone
-from pathlib import PurePosixPath, PosixPath
+from pathlib import PurePosixPath
 import io
 import json
 import os
 import re
 import stat
-import subprocess
 import sys
 import tarfile
 
