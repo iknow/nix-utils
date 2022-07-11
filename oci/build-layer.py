@@ -307,7 +307,7 @@ if __name__ == '__main__':
     for name, entry_spec in spec.items():
         normalized_path, error = parse_entry_path(name)
         if error is not None:
-            spec_errors.push(error)
+            spec_errors.append(error)
             continue
 
         normalized_spec.append((normalized_path, entry_spec))
