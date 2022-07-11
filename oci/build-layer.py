@@ -25,14 +25,14 @@ def parse_existing_path(name):
 def parse_entry_path(name):
     path = PurePosixPath(os.path.normpath(name))
     if not path.is_absolute():
-        return (None, f'{name} must be absolute')
+        return None, f'{name} must be absolute'
     if path.as_posix() != name:
-        return (None, f'{name} should be normalized to {path}')
+        return None, f'{name} should be normalized to {path}'
 
     if path.as_posix() == '/':
-        return ('.', None)
+        return '.', None
     else:
-        return (f'.{path}', None)
+        return f'.{path}', None
 
 
 number_regex = re.compile('[0-9]+')
