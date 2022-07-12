@@ -5,6 +5,7 @@
 , writeText
 , writeReferencesToFile
 , python3
+, pigz
 , jq
 , buildPackages
 }:
@@ -58,7 +59,7 @@ entries // rec {
       directExcludes = builtins.filter (x: x.excludeFromLayer or false) includes;
     in
     runCommand name {
-      nativeBuildInputs = [ python3 ];
+      nativeBuildInputs = [ python3 pigz ];
       layerIncludes = writeReferencesToFile includesFile;
       layerExcludes = writeReferencesToFile excludesFile;
       directExcludes = directExcludes ++ [ includesFile ];
@@ -101,7 +102,9 @@ entries // rec {
       # if we have an image after all this, hash it and build up the OCI blob
       # structure
       if [ -f $out/layer.tar ]; then
-        python ${./hash-layer.py} $out
+        sha256sum $out/layer.tar | cut -b -64 > $out/contentsha256
+        pigz -3 -n -m $out/layer.tar
+        python ${./hash-layer.py} $out gzip
       fi
     '';
 
