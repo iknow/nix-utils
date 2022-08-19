@@ -51,7 +51,8 @@ entries // rec {
     entries ? {},
     umask ? "0222",
     includes ? [],
-    excludes ? []
+    excludes ? [],
+    format ? "gzip"
   }:
     let
       includesFile = writeText "layer-includes" (builtins.concatStringsSep "\n" includes);
@@ -63,7 +64,7 @@ entries // rec {
       layerIncludes = writeReferencesToFile includesFile;
       layerExcludes = writeReferencesToFile excludesFile;
       directExcludes = directExcludes ++ [ includesFile ];
-      inherit baseTar;
+      inherit baseTar format;
 
       entriesJson = builtins.toJSON entries;
       passAsFile = [ "entriesJson" ];
@@ -103,8 +104,12 @@ entries // rec {
       # structure
       if [ -f $out/layer.tar ]; then
         sha256sum $out/layer.tar | cut -b -64 > $out/contentsha256
-        pigz -3 -n -m $out/layer.tar
-        python ${./hash-layer.py} $out gzip
+        case $format in
+          gzip) pigz -3 -n -m $out/layer.tar ;;
+          tar)  ;;
+          *) echo "Unsupported format: '$format'"; exit 1 ;;
+        esac
+        python ${./hash-layer.py} $out $format
       fi
     '';
 
@@ -157,6 +162,7 @@ entries // rec {
         makeLayer' {
           name = "${name}-bare";
           inherit entries umask;
+          format = "tar";
         }
       )];
 
