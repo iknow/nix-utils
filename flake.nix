@@ -9,11 +9,11 @@
       {
         # this does lock us to a different nixpkgs version for the docker build
         # steps but it ensures the API is what we expect
-        lib.docker = callPackage ./docker.nix {};
+        utils.docker = callPackage ./docker.nix {};
         utils.oci = callPackage ./oci {};
       }
     ) // {
       # this is system agnostic
-      sources = import ./sources.nix { inherit (nixpkgs) lib; };
+      lib.sources = import ./sources.nix { inherit (nixpkgs) lib; };
     };
 }
