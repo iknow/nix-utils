@@ -7,8 +7,6 @@
         inherit (pkgs) callPackage;
       in
       {
-        # this does lock us to a different nixpkgs version for the docker build
-        # steps but it ensures the API is what we expect
         utils.docker = callPackage ./docker.nix {};
         utils.oci = callPackage ./oci {};
       }
