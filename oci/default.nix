@@ -36,7 +36,7 @@ entries // rec {
      This is mainly for internal use. Prefer using makeLayer instead.
 
      baseTar can be any tar file. See makeLayer for the description of entries,
-     umask, includes and excludes.
+     umask, mtime, includes and excludes.
 
      In terms of precedence, baseTar > entries > includes. Files / directories
      from a "higher" level are never overwritten (in terms of both content and
@@ -50,6 +50,7 @@ entries // rec {
     baseTar ? null,
     entries ? {},
     umask ? "0222",
+    mtime ? null,
     includes ? [],
     excludes ? [],
     format ? "gzip"
@@ -95,7 +96,7 @@ entries // rec {
       python ${./build-layer.py} \
         --out $out/layer.tar \
         --umask ${umask} \
-        --mtime "$SOURCE_DATE_EPOCH" \
+        --mtime ${if mtime == null then "$SOURCE_DATE_EPOCH" else (builtins.toString mtime)} \
         --entries $entriesJsonPath \
         --includes $layerIncludes \
         --excludes excludePaths
@@ -132,6 +133,10 @@ entries // rec {
 
      umask specifies the "umask" to be applied to entries by default.
 
+     mtime specifies the mtime as a unix timestamp (in seconds) for all files
+     in this layer. By default, it will use "$SOURCE_DATE_EPOCH" to match
+     dockerTools.
+
      path is a list of derivations to add to the PATH of the resulting image
      containing this layer.
 
@@ -147,6 +152,7 @@ entries // rec {
     name,
     entries ? null,
     umask ? "0222",
+    mtime ? null,
     path ? [],
     includes ? [],
     excludes ? [],
@@ -161,7 +167,7 @@ entries // rec {
       bareLayer = lib.optionals (entries != null && entries != {}) [(
         makeLayer' {
           name = "${name}-bare";
-          inherit entries umask;
+          inherit entries umask mtime;
           format = "tar";
         }
       )];
@@ -169,7 +175,7 @@ entries // rec {
       fullIncludes = path ++ includes ++ bareLayer;
     in
     makeLayer' {
-      inherit name excludes;
+      inherit name mtime excludes;
 
       baseTar = builtins.foldl' (_: x: x) null (map (layer: "${layer}/layer.tar") bareLayer);
 
