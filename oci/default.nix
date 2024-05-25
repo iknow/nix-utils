@@ -271,6 +271,23 @@ entries // rec {
         $layers
     '';
 
+  /* Creates an OCI image index containing various manifests */
+
+  makeImageIndex = { name, images, passthru ? {} }:
+    runCommand name {
+      inherit images;
+      nativeBuildInputs = [ python3 ];
+      passthru = {
+        inherit images;
+        imageFormat = "oci";
+      };
+    } ''
+      mkdir $out
+      python ${./build-image-index.py} \
+        --out $out \
+        $images
+    '';
+
   /* Creates an OCI image directory containing various manifests
 
      This is usable with skopeo using the path oci:<path to result>:tag
@@ -297,7 +314,7 @@ entries // rec {
       done | jq -cs '{ schemaVersion: 2, manifests: . }' > $out/index.json
 
       ${lib.concatMapStringsSep "\n" (manifest: ''
-        cp -r ${manifest}/blobs $out
+        cp --no-preserve=mode -r ${manifest}/blobs $out
       '') manifests}
     '';
 
