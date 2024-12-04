@@ -3,7 +3,7 @@
 , closureInfo
 , runCommand
 , writeText
-, writeReferencesToFile
+, writeClosure
 , python3
 , pigz
 , jq
@@ -23,7 +23,7 @@ entries // rec {
   */
   makeDependencyOnlyWrapper = drv:
     let
-      referencesFile = writeReferencesToFile drv;
+      referencesFile = writeClosure [ drv ];
     in
     runCommand "${drv.name}-dependencies" {
       passthru.excludeFromLayer = true;
@@ -56,16 +56,13 @@ entries // rec {
     format ? "gzip"
   }:
     let
-      includesFile = writeText "layer-includes" (builtins.concatStringsSep "\n" includes);
-      excludesFile = writeText "layer-excludes" (builtins.concatStringsSep "\n" excludes);
       directExcludes = builtins.filter (x: x.excludeFromLayer or false) includes;
     in
     runCommand name {
       nativeBuildInputs = [ python3 pigz ];
-      layerIncludes = writeReferencesToFile includesFile;
-      layerExcludes = writeReferencesToFile excludesFile;
-      directExcludes = directExcludes ++ [ includesFile ];
-      inherit baseTar format;
+      layerIncludes = writeClosure includes;
+      layerExcludes = writeClosure excludes;
+      inherit baseTar format directExcludes;
 
       entriesJson = builtins.toJSON entries;
       passAsFile = [ "entriesJson" ];
