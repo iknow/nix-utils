@@ -36,12 +36,14 @@
       includeRegexes = lib.unique (builtins.concatMap makeIncludeRegex include);
       excludeRegexes = lib.unique (builtins.concatMap makeExcludeRegex exclude);
     in
-    builtins.filterSource
-      (path: type:
+    builtins.path {
+      name = "source";
+      path = src;
+      filter = (path: type:
         let
           relPath = lib.removePrefix (toString src + "/") (toString path);
           matchRelPath = re: builtins.match re relPath != null;
         in
-        (lib.any matchRelPath includeRegexes) && !(lib.any matchRelPath excludeRegexes))
-      src;
+        (lib.any matchRelPath includeRegexes) && !(lib.any matchRelPath excludeRegexes));
+    };
 }
