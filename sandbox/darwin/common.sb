@@ -1,0 +1,80 @@
+(version 1)
+
+(deny default)
+
+(import "system.sb")
+
+;; In macOS 26, system.sb includes the following. Copy/paste for macOS 15 compatibility.
+
+;;; Allow read/write access to the file descriptors since xnu performs the
+;;; appropriate POSIX checks to prevent privilege escalation.
+(allow file-read-data file-test-existence file-write-data
+       (subpath "/dev/fd"))
+
+;; End of copy/paste from system.sb
+
+@helpers@
+
+;; All file metadata, which allows traversing symlinks
+(allow file-read-metadata)
+
+;; Anything from the nix store is fine
+;;
+;; More granular permissions could be computed, but sandbox profiles
+;; have length limits, and embedding all the nix hashes can easily
+;; cross that.
+(allow file-read* process-exec (subpath (param "NIX_STORE")))
+
+;; We have both TMPDIR and MACOS_TMPDIR, where the former is an
+;; environment variable and the latter is what macOS yields via
+;; FileManager.temporaryDirectory. Some things use the former (like
+;; yarn), some user the latter (like Chrome). Typically these are the
+;; same value, but nix-shell will assert a value of TMPDIR, which
+;; Chrome will ignore, so we grant access to both.
+
+;; TMPDIR is usable
+(define (eikaiwa--allow-tmp-dir dir)
+  (when dir
+    (allow file* process-exec
+           (subpath dir)
+
+           ;; These paths are often /var/folders/..., where /var is a
+           ;; symlink to private/var. Allow the private/ prefixed
+           ;; versions too. /private/private is unlikely to be a
+           ;; vulnerability.
+           (subpath (string-append "/private" dir)))))
+
+(eikaiwa--allow-tmp-dir (param "TMPDIR"))
+(eikaiwa--allow-tmp-dir (param "MACOS_TMPDIR"))
+(eikaiwa--allow-tmp-dir "/tmp")
+
+;; Commmon interpreters
+(allow file-read* process-exec
+       (literal "/bin/sh")
+       (literal "/bin/bash")
+       (literal "/usr/bin/env"))
+
+;; Common and innocuous seeming mach things
+(allow mach-lookup
+       (global-name "com.apple.SystemConfiguration.DNSConfiguration")
+       (global-name "com.apple.FSEvents"))
+
+;; Various tools want to use git
+(allow file-read*
+       (home-literal "/.gitconfig")
+       (home-subpath "/.config/git"))
+
+;; Full file access to the project directory
+(define (eikaiwa--full-source-access)
+  (allow file* process-exec
+         (subpath (param "SOURCE_ROOT"))))
+
+;; Signals constrained to the sandbox are safe
+(allow signal (target same-sandbox))
+
+;; Eikaiwa Developer may wish to pass resources from its cache dir (like db snapshots)
+(allow file-read* (home-subpath "/Library/Caches/com.dmm.eikaiwa.EikaiwaDeveloper"))
+
+;; If a state directory is defined, full access is granted to that directory
+(when (< 0 (string-length (param "STATE_DIR")))
+  (allow file* (subpath (param "STATE_DIR"))))
