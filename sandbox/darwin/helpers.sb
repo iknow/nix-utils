@@ -1,0 +1,19 @@
+;; Found in Apple's profiles
+(define (home-regex home-relative-regex)
+    (regex (string-append "^" (regex-quote (param "HOME")) home-relative-regex)))
+(define (home-subpath home-relative-subpath)
+    (subpath (string-append (param "HOME") home-relative-subpath)))
+(define (home-prefix home-relative-prefix)
+    (prefix (string-append (param "HOME") home-relative-prefix)))
+(define (home-literal home-relative-literal)
+    (literal (string-append (param "HOME") home-relative-literal)))
+
+;; The above, but for SOURCE_ROOT
+(define (source-regex source-relative-regex)
+    (regex (string-append "^" (regex-quote (param "SOURCE_ROOT")) source-relative-regex)))
+(define (source-subpath source-relative-subpath)
+    (subpath (string-append (param "SOURCE_ROOT") source-relative-subpath)))
+(define (source-prefix source-relative-prefix)
+    (prefix (string-append (param "SOURCE_ROOT") source-relative-prefix)))
+(define (source-literal source-relative-literal)
+    (literal (string-append (param "SOURCE_ROOT") source-relative-literal)))
