@@ -17,14 +17,29 @@ fi
 # to also allow Chrome's sandbox.
 export EIKAIWA_SANDBOX_ACTIVE=true
 
+declare -a optional_defines
+
+# TMPDIR is removed by `nix shell`
+if [ -n "${TMPDIR:+set}" ]; then
+  optional_defines+=("-D" "TMPDIR=$TMPDIR")
+fi
+
+if [ -n "$TTY" ]; then
+  optional_defines+=("-D" "TTY=$TTY")
+fi
+
+state_dir="@state_dir@"
+
+if [ -n "$state_dir" ]; then
+  optional_defines+=("-D" "STATE_DIR=$state_dir")
+fi
+
 exec /usr/bin/sandbox-exec \
   -f "@profile@" \
-  -D "TTY=$TTY" \
   -D "HOME=$HOME" \
   -D "NIX_STORE=@store_dir@" \
   -D "SOURCE_ROOT=@source_root@" \
-  -D "TMPDIR=$TMPDIR" \
   -D "MACOS_TMPDIR=$(@get_tmpdir@)" \
-  -D "STATE_DIR=@state_dir@" \
+  "${optional_defines[@]}" \
   "@command@" \
   "$@"
