@@ -76,5 +76,5 @@
 (allow file-read* (home-subpath "/Library/Caches/com.dmm.eikaiwa.EikaiwaDeveloper"))
 
 ;; If a state directory is defined, full access is granted to that directory
-(when (< 0 (string-length (param "STATE_DIR")))
+(when (param "STATE_DIR")
   (allow file* (subpath (param "STATE_DIR"))))
