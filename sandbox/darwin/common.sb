@@ -25,6 +25,24 @@
 ;; cross that.
 (allow file-read* process-exec (subpath (param "NIX_STORE")))
 
+;; Allow the execution of standard unix and macOS utilities, including developer
+;; tools like git. This is also present in application.sb
+(allow file-read* process-exec
+       (subpath "/bin")
+       (subpath "/sbin")
+       (subpath "/usr/bin")
+       (subpath "/usr/sbin"))
+
+;; Developer tools may also be distributed as part of Xcode or the
+;; Command Line Tools package.
+(allow file-read* process-exec
+       (subpath "/Applications/Xcode.app/Contents/Developer")
+       (subpath "/Library/Developer/CommandLineTools"))
+
+;; Other package managers
+(allow file-read* process-exec
+       (subpath "/opt/homebrew"))
+
 ;; We have both TMPDIR and MACOS_TMPDIR, where the former is an
 ;; environment variable and the latter is what macOS yields via
 ;; FileManager.temporaryDirectory. Some things use the former (like
@@ -47,12 +65,6 @@
 (eikaiwa--allow-tmp-dir (param "TMPDIR"))
 (eikaiwa--allow-tmp-dir (param "MACOS_TMPDIR"))
 (eikaiwa--allow-tmp-dir "/tmp")
-
-;; Commmon interpreters
-(allow file-read* process-exec
-       (literal "/bin/sh")
-       (literal "/bin/bash")
-       (literal "/usr/bin/env"))
 
 ;; Common and innocuous seeming mach things
 (allow mach-lookup
