@@ -230,7 +230,9 @@ entries // rec {
         acc ++ [ resolvedLayer ]
       ) [] (layers ++ configLayer);
 
-      path = lib.makeBinPath (builtins.concatMap (layer: layer.path or []) resolvedLayers);
+      # we want PATH defined in later layers to take priority over earlier
+      # layers so we have to reverse the list
+      path = lib.makeBinPath (builtins.concatMap (layer: layer.path or []) (lib.reverseList resolvedLayers));
 
       # merge PATH in env
       configEnv = config.Env or [];
