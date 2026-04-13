@@ -40,6 +40,7 @@ let
         local wrapper=$out/bin/$(basename "$1")
 
         substitute ${./wrapper.sh} "$wrapper" \
+          --subst-var-by "runtimeShell" "${pkgs.runtimeShell}" \
           --subst-var-by "profile" "${composedProfile}" \
           --subst-var-by "command" "$1" \
           --subst-var-by "store_dir" "${builtins.storeDir}" \
